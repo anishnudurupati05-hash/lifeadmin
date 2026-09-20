@@ -1,0 +1,28 @@
+name: LifeAdmin reminders
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: lifeadmin-reminders
+  cancel-in-progress: false
+jobs:
+  reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate due reminders
+        env:
+          LIFEADMIN_URL: https://lifeadmin-orbit.anishnudurupati.chatgpt.site
+          LIFE_ENGINE_JOB_TOKEN: ${{ secrets.LIFE_ENGINE_JOB_TOKEN }}
+          SITES_ACCESS_TOKEN: ${{ secrets.SITES_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          // Run this from an authenticated scheduler every thirty minutes. Never print credentials.
+          const {LIFEADMIN_URL,LIFE_ENGINE_JOB_TOKEN,SITES_ACCESS_TOKEN}=process.env;
+          if(!LIFEADMIN_URL||!LIFE_ENGINE_JOB_TOKEN||!SITES_ACCESS_TOKEN)throw Error('Configure LIFEADMIN_URL, LIFE_ENGINE_JOB_TOKEN, and SITES_ACCESS_TOKEN in the scheduler secret store.');
+          const origin=new URL(LIFEADMIN_URL);if(origin.protocol!=='https:')throw Error('A secure LifeAdmin URL is required.');
+          let cursor=null;let pages=0;do{const url=new URL('/api/jobs/life-engine',origin);if(cursor)url.searchParams.set('after',cursor);const response=await fetch(url,{method:'POST',headers:{'x-life-engine-job-token':LIFE_ENGINE_JOB_TOKEN,'OAI-Sites-Authorization':'Bearer '+SITES_ACCESS_TOKEN},redirect:'error',signal:AbortSignal.timeout(120000)});if(!response.ok)throw Error('Life Engine scheduler returned '+response.status);const result=await response.json();if(result.failed)throw Error('One or more owners need a safe retry.');cursor=result.nextCursor;if(++pages>1000)throw Error('Scheduler page limit reached.');}while(cursor);console.log('Life Engine evaluation succeeded.');
+          NODE
